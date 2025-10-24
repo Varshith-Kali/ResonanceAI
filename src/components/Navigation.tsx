@@ -1,4 +1,4 @@
-import { Mic, BarChart3, Brain, BookOpen } from 'lucide-react';
+import { Mic, BarChart3, Brain, BookOpen, Headphones } from 'lucide-react';
 
 interface NavigationProps {
   activeTab: string;
@@ -9,6 +9,7 @@ export default function Navigation({ activeTab, setActiveTab }: NavigationProps)
   const tabs = [
     { id: 'upload', label: 'Audio Analysis', icon: Mic },
     { id: 'detection', label: 'Detection', icon: Brain },
+    { id: 'cloning', label: 'Voice Cloning', icon: Headphones },
     { id: 'history', label: 'History', icon: BarChart3 },
     { id: 'education', label: 'Research', icon: BookOpen },
   ];

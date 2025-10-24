@@ -6,6 +6,7 @@ import FeatureDisplay from './components/FeatureDisplay';
 import DetectionPanel from './components/DetectionPanel';
 import EducationPanel from './components/EducationPanel';
 import AnalysisHistory from './components/AnalysisHistory';
+import VoiceCloning from './components/VoiceCloning';
 import { insertAudioAnalysis } from './lib/localStorage';
 import {
   extractMFCC,
@@ -15,7 +16,7 @@ import {
   calculateZeroCrossingRate,
   simulateDetection
 } from './utils/audioAnalysis';
-import { enhancedSyntheticVoiceDetection } from './utils/voiceCloning';
+import { analyzeVoiceAuthenticity } from './utils/voiceCloning';
 
 interface AnalysisResult {
   audioBuffer: AudioBuffer;
@@ -142,6 +143,10 @@ function App() {
 
         {activeTab === 'history' && (
           <AnalysisHistory key={refreshHistory} />
+        )}
+
+        {activeTab === 'cloning' && (
+          <VoiceCloning />
         )}
 
         {activeTab === 'education' && <EducationPanel />}

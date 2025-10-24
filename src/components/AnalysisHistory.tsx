@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Clock, FileAudio, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Clock, FileAudio, TrendingUp, AlertTriangle, CheckCircle, Search, Filter } from 'lucide-react';
 import { AudioAnalysis, getAudioAnalyses } from '../lib/localStorage';
 
 export default function AnalysisHistory() {
   const [analyses, setAnalyses] = useState<AudioAnalysis[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState('all');
 
   useEffect(() => {
     loadAnalyses();
@@ -20,6 +22,15 @@ export default function AnalysisHistory() {
       setLoading(false);
     }
   };
+  
+  const filteredAnalyses = analyses.filter(analysis => {
+    const matchesSearch = analysis.file_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = 
+      filterType === 'all' || 
+      (filterType === 'synthetic' && analysis.is_synthetic) || 
+      (filterType === 'authentic' && !analysis.is_synthetic);
+    return matchesSearch && matchesFilter;
+  });
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
