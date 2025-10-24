@@ -11,6 +11,8 @@ interface VoiceModel {
   name: string;
   createdAt: Date;
   duration: number;
+  sourceAudioId?: string;
+  language?: string;
   features: {
     sampleRate: number;
     embeddings: Float32Array;
@@ -22,8 +24,31 @@ interface VoiceModel {
     voiceCharacteristics: Record<string, any>;
   };
 }
+
+// Define AudioAnalysis interface
+interface AudioAnalysis {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+  file_name: string;
+  file_size: number;
+  duration: number;
+  sample_rate: number;
+  is_synthetic: boolean;
+  confidence_score: number;
+  features: {
+    prosodyScore: number;
+    spectralArtifactScore: number;
+    naturalness: number;
+    spectralRegularity?: number;
+  };
+  detection_result: {
+    is_synthetic: boolean;
+    confidence: number;
+  };
+}
+
 import { insertAudioAnalysis } from '../lib/localStorage';
-import { v4 as uuidv4 } from 'uuid';
 
 const VoiceCloning: React.FC = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -142,11 +167,13 @@ const VoiceCloning: React.FC = () => {
       setDetectionResults(detectionResult);
       
       // Save analysis to local storage
-      const analysis = {
+      const analysis: Omit<AudioAnalysis, "id" | "created_at" | "updated_at"> = {
         file_name: audioFile.name,
         file_size: audioFile.size,
         duration: audioBuffer.duration,
         sample_rate: audioBuffer.sampleRate,
+        is_synthetic: detectionResult.isSynthetic,
+        confidence_score: detectionResult.confidence,
         features: detectionResult.enhancedFeatures,
         detection_result: {
           is_synthetic: detectionResult.isSynthetic,
