@@ -16,7 +16,8 @@ import {
   calculateZeroCrossingRate,
   simulateDetection
 } from './utils/audioAnalysis';
-import { analyzeVoiceAuthenticity } from './utils/voiceCloning';
+// Import function from voiceCloning module
+import { detectSpectralArtifacts as analyzeVoiceAuthenticity } from './utils/voiceCloning.js';
 
 interface AnalysisResult {
   audioBuffer: AudioBuffer;

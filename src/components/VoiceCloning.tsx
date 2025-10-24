@@ -1,6 +1,27 @@
 import React, { useState, useRef } from 'react';
-import { createVoiceModel, synthesizeSpeech, VoiceModel } from '../utils/voiceCloning';
-import { enhancedSyntheticVoiceDetection } from '../utils/voiceCloning';
+import { 
+  createVoiceModel, 
+  synthesizeSpeech, 
+  enhancedSyntheticVoiceDetection 
+} from '../utils/voiceCloning.js';
+
+// Define VoiceModel interface locally to avoid TypeScript errors
+interface VoiceModel {
+  id: string;
+  name: string;
+  createdAt: Date;
+  duration: number;
+  features: {
+    sampleRate: number;
+    embeddings: Float32Array;
+    phonemeMapping: Record<string, any>;
+    formantStructure: any[];
+    intonationPatterns: any[];
+    speechRate: number;
+    rhythmPatterns: any[];
+    voiceCharacteristics: Record<string, any>;
+  };
+}
 import { insertAudioAnalysis } from '../lib/localStorage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -24,7 +45,7 @@ const VoiceCloning: React.FC = () => {
   // Initialize audio context
   const initAudioContext = () => {
     if (!audioContext.current) {
-      audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+      audioContext.current = new AudioContext();
     }
     return audioContext.current;
   };
@@ -112,30 +133,31 @@ const VoiceCloning: React.FC = () => {
         return;
       }
       
-      // Create voice model
-      const model = createVoiceModel(audioBuffer, audioFile.name);
+      // Create voice model (now async)
+      const model = await createVoiceModel(audioBuffer, audioFile.name);
       setVoiceModel(model);
       
-      // Run detection on the original audio
-      const detectionResult = enhancedSyntheticVoiceDetection(audioBuffer);
+      // Run detection on the original audio (now async)
+      const detectionResult = await enhancedSyntheticVoiceDetection(audioBuffer);
       setDetectionResults(detectionResult);
       
       // Save analysis to local storage
       const analysis = {
-        id: uuidv4(),
-        filename: audioFile.name,
+        file_name: audioFile.name,
+        file_size: audioFile.size,
         duration: audioBuffer.duration,
-        timestamp: new Date().toISOString(),
-        result: {
-          isSynthetic: detectionResult.isSynthetic,
-          confidence: detectionResult.confidence,
-          features: detectionResult.enhancedFeatures
+        sample_rate: audioBuffer.sampleRate,
+        features: detectionResult.enhancedFeatures,
+        detection_result: {
+          is_synthetic: detectionResult.isSynthetic,
+          confidence: detectionResult.confidence
         }
       };
       
       insertAudioAnalysis(analysis);
       
     } catch (err) {
+      console.error("Voice model creation error:", err);
       setError('Error processing audio: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsProcessing(false);
@@ -158,6 +180,7 @@ const VoiceCloning: React.FC = () => {
     setError(null);
     
     try {
+      // Synthesize speech with ML-based voice cloning
       const audio = await synthesizeSpeech(voiceModel, textToSynthesize);
       setSynthesizedAudio(audio);
       
@@ -197,7 +220,12 @@ const VoiceCloning: React.FC = () => {
         source.stop();
       }, audio.duration * 1000);
       
+      // Run detection on the synthesized audio (now async)
+      const detectionResult = await enhancedSyntheticVoiceDetection(audio);
+      setDetectionResults(detectionResult);
+      
     } catch (err) {
+      console.error("Speech synthesis error:", err);
       setError('Error synthesizing speech: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsProcessing(false);
@@ -296,8 +324,8 @@ const VoiceCloning: React.FC = () => {
               <div className="text-sm text-gray-600 space-y-1">
                 <p><span className="font-medium">Name:</span> {voiceModel.name}</p>
                 <p><span className="font-medium">Created:</span> {voiceModel.createdAt.toLocaleString()}</p>
-                <p><span className="font-medium">Duration:</span> {voiceModel.metadata.duration.toFixed(2)}s</p>
-                <p><span className="font-medium">Sample Rate:</span> {voiceModel.sampleRate}Hz</p>
+                <p><span className="font-medium">Duration:</span> {voiceModel.duration.toFixed(2)}s</p>
+                <p><span className="font-medium">Sample Rate:</span> {voiceModel.features.sampleRate}Hz</p>
               </div>
             </div>
             

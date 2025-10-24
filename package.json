@@ -15,7 +15,12 @@
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "onnxruntime-web": "^1.17.0",
+    "ml-fft": "^3.0.0",
+    "ml-matrix": "^6.10.4",
+    "comlink": "^4.4.1",
+    "tensorflow-tfjs": "^4.17.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
