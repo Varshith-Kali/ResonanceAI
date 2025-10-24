@@ -13,11 +13,10 @@ import {
   extractPitch,
   extractFormants,
   calculateSpectralCentroid,
-  calculateZeroCrossingRate,
-  simulateDetection
+  calculateZeroCrossingRate
 } from './utils/audioAnalysis';
 // Import function from voiceCloning module
-import { detectSpectralArtifacts as analyzeVoiceAuthenticity } from './utils/voiceCloning.js';
+import { detectSpectralArtifacts, enhancedSyntheticVoiceDetection } from './utils/voiceCloning.js';
 
 interface AnalysisResult {
   audioBuffer: AudioBuffer;

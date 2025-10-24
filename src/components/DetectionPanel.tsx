@@ -1,4 +1,4 @@
-import { Shield, AlertTriangle, CheckCircle, Info, BarChart2 } from 'lucide-react';
+import { Shield, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 
 interface DetectionPanelProps {
   isSynthetic: boolean;
@@ -13,10 +13,6 @@ interface DetectionPanelProps {
 
 export default function DetectionPanel({ isSynthetic, confidence, modelName, features }: DetectionPanelProps) {
   const confidencePercent = (confidence * 100).toFixed(1);
-  const hasEnhancedFeatures = features && 
-    (features.prosodyScore !== undefined || 
-     features.spectralArtifactScore !== undefined || 
-     features.naturalness !== undefined);
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-6">

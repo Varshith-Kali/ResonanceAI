@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Clock, FileAudio, TrendingUp, AlertTriangle, CheckCircle, Search, Filter } from 'lucide-react';
-import { AudioAnalysis, getAudioAnalyses } from '../lib/localStorage';
+import { AudioAnalysis, getAudioAnalyses, deleteAudioAnalysis } from '../lib/localStorage';
 
 export default function AnalysisHistory() {
   const [analyses, setAnalyses] = useState<AudioAnalysis[]>([]);
@@ -132,8 +132,7 @@ export default function AnalysisHistory() {
           <div className="flex items-center space-x-2 ml-auto">
             <span className="text-sm font-medium text-gray-700">Sort by:</span>
             <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              value="date"
               className="px-3 py-1 border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="date">Date</option>
