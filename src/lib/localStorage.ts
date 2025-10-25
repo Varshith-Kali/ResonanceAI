@@ -96,7 +96,10 @@ export const insertAudioAnalysis = (analysis: Omit<AudioAnalysis, 'id' | 'create
       ...analysis,
       id: uuidv4(),
       created_at: now,
-      updated_at: now
+      updated_at: now,
+      features: {
+        ...analysis.features
+      }
     };
     
     const analyses = getAudioAnalyses();

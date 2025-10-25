@@ -188,15 +188,19 @@ const VoiceCloning: React.FC = () => {
     
     try {
       let audio: AudioBuffer;
+      const context = initAudioContext();
       
       if (conversionMode === 'tts') {
         // Synthesize speech with ML-based voice cloning
         audio = await synthesizeSpeech(voiceModel, textToSynthesize, selectedLanguage);
       } else {
         // Voice conversion mode
-        const context = initAudioContext();
-        const arrayBuffer = await sourceAudio!.arrayBuffer();
-        // Process source audio for voice conversion
+        if (!sourceAudio) {
+          throw new Error('Source audio is required for voice conversion');
+        }
+        
+        const arrayBuffer = await sourceAudio.arrayBuffer();
+        const sourceAudioBuffer = await context.decodeAudioData(arrayBuffer);
         
         // For now, we'll use the same synthesizeSpeech function as a placeholder
         // In a real implementation, this would use a voice conversion model
@@ -416,9 +420,15 @@ const VoiceCloning: React.FC = () => {
                     {detectionResults.is_synthetic ? 'SYNTHETIC VOICE DETECTED' : 'NATURAL VOICE DETECTED'}
                   </p>
                   <p><span className="font-medium">Confidence:</span> {(detectionResults.confidence_score * 100).toFixed(2)}%</p>
-                  <p><span className="font-medium">Prosody Score:</span> {(detectionResults.features?.prosodyScore * 100).toFixed(2)}%</p>
-                  <p><span className="font-medium">Spectral Artifacts:</span> {(detectionResults.features?.spectralArtifactScore * 100).toFixed(2)}%</p>
-                  <p><span className="font-medium">Naturalness:</span> {(detectionResults.features?.naturalness * 100).toFixed(2)}%</p>
+                  {detectionResults.features?.prosodyScore !== undefined && (
+                    <p><span className="font-medium">Prosody Score:</span> {(detectionResults.features.prosodyScore * 100).toFixed(2)}%</p>
+                  )}
+                  {detectionResults.features?.spectralArtifactScore !== undefined && (
+                    <p><span className="font-medium">Spectral Artifacts:</span> {(detectionResults.features.spectralArtifactScore * 100).toFixed(2)}%</p>
+                  )}
+                  {detectionResults.features?.naturalness !== undefined && (
+                    <p><span className="font-medium">Naturalness:</span> {(detectionResults.features.naturalness * 100).toFixed(2)}%</p>
+                  )}
                 </div>
               </div>
             )}
