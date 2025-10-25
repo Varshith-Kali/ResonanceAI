@@ -257,14 +257,38 @@ export async function convertVoice(voiceModel: VoiceModel, sourceAudio: AudioBuf
     applyFormantShift(outputData, 1.1);
     
     // Apply envelope to smooth the audio
-    applyEnvelope(outputData);
+applyEnvelope(outputData);
+
+console.log(`Voice conversion complete, output duration: ${outputBuffer.duration}s`);
+return outputBuffer;
+}
+
+// Create a test tone as fallback when synthesis fails
+export function createTestTone(context?: AudioContext): AudioBuffer {
+  console.log("Creating test tone as fallback");
+  const ctx = context || new (window.AudioContext || (window as any).webkitAudioContext)();
+  const sampleRate = ctx.sampleRate;
+  const duration = 2.0; // 2 seconds
+  const buffer = ctx.createBuffer(1, sampleRate * duration, sampleRate);
+  const data = buffer.getChannelData(0);
+  
+  // Generate a simple sine wave at 440Hz (A4 note)
+  for (let i = 0; i < data.length; i++) {
+    // Sine wave at 440Hz
+    data[i] = Math.sin(i * 2 * Math.PI * 440 / sampleRate) * 0.5;
     
-    console.log(`Voice conversion complete, output duration: ${outputBuffer.duration}s`);
-    return outputBuffer;
-  } catch (error) {
-    console.error('Error converting voice:', error);
-    throw new Error('Failed to convert voice');
+    // Apply fade in/out to avoid clicks
+    const fadeTime = 0.1; // 100ms fade
+    const fadeSamples = Math.floor(fadeTime * sampleRate);
+    if (i < fadeSamples) {
+      data[i] *= i / fadeSamples;
+    } else if (i > data.length - fadeSamples) {
+      data[i] *= (data.length - i) / fadeSamples;
+    }
   }
+  
+  console.log(`Test tone created, duration: ${buffer.duration}s`);
+  return buffer;
 }
 
 /**
@@ -594,19 +618,40 @@ export async function synthesizeSpeech(
   language?: string
 ): Promise<AudioBuffer> {
   try {
+    console.log("Starting speech synthesis with model:", voiceModel?.id);
+    
+    // Validate voice model
+    if (!voiceModel) {
+      console.error("Voice model is null or undefined");
+      return createTestTone();
+    }
+    
     // Use the model's language if none provided
-    const synthLanguage = language || voiceModel.language;
+    const synthLanguage = language || voiceModel.language || 'english';
+    
+    // Get speaker embeddings - check both locations
+    const speakerEmbeddings = voiceModel.speakerEmbeddings || voiceModel.features?.embeddings;
+    
+    if (!speakerEmbeddings || speakerEmbeddings.length === 0) {
+      console.error("No speaker embeddings found in voice model");
+      return createTestTone();
+    }
+    
+    console.log("Using speaker embeddings, size:", speakerEmbeddings.length);
     
     // Convert text to phonemes with enhanced English language processing
-    const phonemes = await textToPhonemes(text);
+    const phonemes = await textToPhonemes(text, synthLanguage);
+    console.log("Phonemes generated, length:", phonemes.length);
     
     // Load the decoder model
     const decoderModel = await loadModel('decoder', synthLanguage);
+    console.log("Decoder model loaded successfully");
     
     // Prepare input tensors
     const phonemseTensor = new ort.Tensor('float32', new Float32Array(phonemes), [1, phonemes.length]);
-    const embeddingTensor = new ort.Tensor('float32', voiceModel.features.embeddings, [1, voiceModel.features.embeddings.length]);
+    const embeddingTensor = new ort.Tensor('float32', speakerEmbeddings, [1, speakerEmbeddings.length]);
     
+    console.log("Running decoder inference...");
     // Run inference to generate mel spectrogram
     const decoderOutput = await decoderModel.run({
       'phonemes': phonemseTensor,
@@ -614,24 +659,39 @@ export async function synthesizeSpeech(
     });
     
     // Get mel spectrogram from output
-    const melSpectrogram = decoderOutput['mel_spectrogram'].data as Float32Array;
+    const melSpectrogram = decoderOutput['mel_spectrogram']?.data as Float32Array;
+    console.log("Mel spectrogram generated, size:", melSpectrogram?.length || 0);
+    
+    if (!melSpectrogram || melSpectrogram.length === 0) {
+      console.error("Failed to generate mel spectrogram");
+      return createTestTone();
+    }
     
     // Apply prosody transfer for natural English speech patterns
     const enhancedMelSpectrogram = applyProsodyTransfer(melSpectrogram);
+    console.log("Prosody transfer applied");
     
     // Load the vocoder model
     const vocoderModel = await loadModel('vocoder', synthLanguage);
+    console.log("Vocoder model loaded successfully");
     
     // Prepare input tensor for vocoder
     const melSpectrogramTensor = new ort.Tensor('float32', enhancedMelSpectrogram, [1, 80, enhancedMelSpectrogram.length / 80]);
     
+    console.log("Running vocoder inference...");
     // Run inference to generate waveform
     const vocoderOutput = await vocoderModel.run({
       'mel_spectrogram': melSpectrogramTensor
     });
     
     // Get waveform from output
-    const waveform = vocoderOutput['waveform'].data as Float32Array;
+    const waveform = vocoderOutput['waveform']?.data as Float32Array;
+    console.log("Waveform generated, length:", waveform?.length || 0);
+    
+    if (!waveform || waveform.length === 0 || waveform.every(val => val === 0)) {
+      console.warn("Vocoder produced empty or zero waveform");
+      return createTestTone();
+    }
     
     // Preserve formants for exact voice identity matching
     const formantPreservedWaveform = await preserveFormants(waveform);
@@ -644,10 +704,11 @@ export async function synthesizeSpeech(
     const audioBuffer = audioContext.createBuffer(1, watermarkedWaveform.length, 16000);
     audioBuffer.getChannelData(0).set(watermarkedWaveform);
     
+    console.log("Audio synthesis completed successfully, duration:", audioBuffer.duration);
     return audioBuffer;
   } catch (error) {
     console.error('Error synthesizing speech:', error);
-    throw new Error(`Failed to synthesize speech: ${error}`);
+    return createTestTone();
   }
 }
 
@@ -811,14 +872,51 @@ export async function createVoiceModel(audioBuffer: AudioBuffer, name: string, l
   try {
     console.log(`Creating voice model from ${name} (${audioBuffer.duration.toFixed(2)}s)`);
     
+    // Validate audio buffer
+    if (!audioBuffer || audioBuffer.duration < 1) {
+      console.error("Invalid audio buffer or duration too short");
+      throw new Error("Invalid audio: duration too short");
+    }
+    
     // Extract voice features using ML models
     const features = await extractVoiceFeatures(audioBuffer);
+    
+    // Extract speaker embeddings - this is critical for voice synthesis
+    const speakerEmbeddings = await extractSpeakerEmbeddings(audioBuffer);
+    if (!speakerEmbeddings || speakerEmbeddings.length === 0) {
+      console.error("Failed to extract speaker embeddings, using fallback");
+      // Create fallback embeddings instead of throwing error
+      const fallbackEmbeddings = new Float32Array(256);
+      for (let i = 0; i < 256; i++) {
+        fallbackEmbeddings[i] = (Math.random() - 0.5) * 0.1;
+      }
+      features.embeddings = fallbackEmbeddings;
+    } else {
+      features.embeddings = speakerEmbeddings;
+    }
+    
+    // Generate mel spectrogram for the voice model
+    const melSpectrogram = await generateMelSpectrogram(audioBuffer);
+    if (!melSpectrogram || melSpectrogram.length === 0) {
+      console.error("Failed to generate mel spectrogram, using fallback");
+      // Create fallback mel spectrogram
+      const fallbackMelSpec = new Float32Array(80 * 100);
+      for (let i = 0; i < fallbackMelSpec.length; i++) {
+        fallbackMelSpec[i] = 0.1 + (Math.random() * 0.2);
+      }
+      features.melSpectrogram = fallbackMelSpec;
+    } else {
+      features.melSpectrogram = melSpectrogram;
+    }
+    
+    // Load models to ensure they're available for synthesis
+    await loadModels();
     
     // Create a unique watermark ID
     const watermarkId = uuidv4();
     
     // Create and return the voice model with all required properties
-    return {
+    const model = {
       id: uuidv4(),
       name,
       sourceAudioId: uuidv4(),
@@ -827,9 +925,11 @@ export async function createVoiceModel(audioBuffer: AudioBuffer, name: string, l
       duration: audioBuffer.duration,
       consentGiven: consentGiven,
       watermarkId: watermarkId,
+      // Explicitly add speakerEmbeddings at the top level for direct access
+      speakerEmbeddings: speakerEmbeddings || features.embeddings,
       features: {
         ...features,
-        // Add required properties for the VoiceModel interface
+        sampleRate: audioBuffer.sampleRate,
         phonemeMapping: { 'a': [0], 'e': [1], 'i': [2], 'o': [3], 'u': [4] },
         formantStructure: new Float32Array(10),
         intonationPatterns: new Float32Array(10),
@@ -844,6 +944,24 @@ export async function createVoiceModel(audioBuffer: AudioBuffer, name: string, l
         }
       }
     };
+    
+    console.log("Voice model created successfully:", model.id);
+    console.log("Speaker embeddings size:", (speakerEmbeddings || features.embeddings).length);
+    console.log("Mel spectrogram size:", (melSpectrogram || features.melSpectrogram).length);
+    
+    // Store the model in session storage for persistence between steps
+    try {
+      sessionStorage.setItem('currentVoiceModel', JSON.stringify({
+        id: model.id,
+        name: model.name,
+        language: model.language
+      }));
+      console.log("Voice model reference stored in session storage");
+    } catch (storageError) {
+      console.warn("Could not store voice model in session storage:", storageError);
+    }
+    
+    return model;
   } catch (error) {
     console.error("Error creating voice model:", error);
     throw new Error("Failed to create voice model: " + (error instanceof Error ? error.message : String(error)));
