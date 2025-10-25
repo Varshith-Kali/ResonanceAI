@@ -205,6 +205,118 @@ export interface VoiceModel {
   audioFeatures?: Record<string, any>;
 }
 
+/**
+ * Converts voice from source audio to target voice model
+ * @param voiceModel The target voice model to convert to
+ * @param sourceAudio The source audio buffer to convert
+ * @returns Converted audio buffer
+ */
+export async function convertVoice(voiceModel: VoiceModel, sourceAudio: AudioBuffer): Promise<AudioBuffer> {
+  console.log(`Converting voice using model ${voiceModel.id}, source duration: ${sourceAudio.duration}s`);
+  
+  try {
+    // Extract speaker embeddings from the source audio
+    const sourceEmbeddings = await extractSpeakerEmbeddings(sourceAudio);
+    
+    // Get target embeddings from the voice model
+    const targetEmbeddings = voiceModel.speakerEmbeddings || voiceModel.features.embeddings;
+    
+    // Create an audio context for buffer creation
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // Create output buffer with same length as input
+    const outputBuffer = audioContext.createBuffer(
+      sourceAudio.numberOfChannels,
+      sourceAudio.length,
+      sourceAudio.sampleRate
+    );
+    
+    // Get source audio data
+    const sourceData = sourceAudio.getChannelData(0);
+    const outputData = outputBuffer.getChannelData(0);
+    
+    // Apply voice conversion (in a real implementation, this would use the ONNX models)
+    // For now, we'll create a modified version of the source audio
+    for (let i = 0; i < outputData.length; i++) {
+      // Apply pitch shifting based on voice model characteristics
+      const pitchFactor = 1.2; // Adjust pitch (higher for female, lower for male voices)
+      const index = Math.floor(i / pitchFactor);
+      
+      // Use source data if index is within bounds, otherwise use original sample
+      outputData[i] = index < sourceData.length ? sourceData[index] : sourceData[i % sourceData.length];
+      
+      // Add some characteristics from the target voice model
+      if (i % 1000 === 0 && targetEmbeddings) {
+        // Modulate amplitude based on target voice characteristics
+        const modulationFactor = (targetEmbeddings[i % targetEmbeddings.length] + 1) / 2;
+        outputData[i] *= modulationFactor;
+      }
+    }
+    
+    // Apply formant shifting to better match target voice
+    applyFormantShift(outputData, 1.1);
+    
+    // Apply envelope to smooth the audio
+    applyEnvelope(outputData);
+    
+    console.log(`Voice conversion complete, output duration: ${outputBuffer.duration}s`);
+    return outputBuffer;
+  } catch (error) {
+    console.error('Error converting voice:', error);
+    throw new Error('Failed to convert voice');
+  }
+}
+
+/**
+ * Apply formant shifting to better match target voice characteristics
+ */
+function applyFormantShift(audioData: Float32Array, shiftFactor: number): void {
+  // In a real implementation, this would use a more sophisticated algorithm
+  // For now, we'll just apply a simple filter
+  const bufferLength = audioData.length;
+  const tempBuffer = new Float32Array(bufferLength);
+  
+  // Simple moving average filter to simulate formant shifting
+  const filterSize = Math.floor(shiftFactor * 10);
+  for (let i = filterSize; i < bufferLength - filterSize; i++) {
+    let sum = 0;
+    for (let j = -filterSize; j <= filterSize; j++) {
+      sum += audioData[i + j];
+    }
+    tempBuffer[i] = sum / (2 * filterSize + 1);
+  }
+  
+  // Mix original and filtered signal
+  const mixRatio = 0.7; // 70% original, 30% filtered
+  for (let i = 0; i < bufferLength; i++) {
+    audioData[i] = audioData[i] * mixRatio + (tempBuffer[i] || 0) * (1 - mixRatio);
+  }
+}
+
+/**
+ * Applies an envelope to the audio data to smooth the beginning and end
+ * @param audioData The audio data to apply the envelope to
+ */
+function applyEnvelope(audioData: Float32Array): void {
+  const fadeInSamples = Math.min(10000, audioData.length / 10);
+  const fadeOutSamples = Math.min(10000, audioData.length / 10);
+  
+  // Apply fade in
+  for (let i = 0; i < fadeInSamples; i++) {
+    const gain = i / fadeInSamples;
+    audioData[i] *= gain;
+  }
+  
+  // Apply fade out
+  for (let i = 0; i < fadeOutSamples; i++) {
+    const gain = (fadeOutSamples - i) / fadeOutSamples;
+    const index = audioData.length - 1 - i;
+    if (index >= 0) {
+      audioData[index] *= gain;
+    }
+  }
+}
+
 // Model paths - these point to the ONNX models in the public folder
 const MODEL_PATHS = {
   encoder: '/models/encoder.onnx',

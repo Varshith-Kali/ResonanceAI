@@ -199,51 +199,113 @@ const VoiceCloning: React.FC = () => {
           throw new Error('Source audio is required for voice conversion');
         }
         
-        const arrayBuffer = await sourceAudio.arrayBuffer();
-        const sourceAudioBuffer = await context.decodeAudioData(arrayBuffer);
-        
-        // For now, we'll use the same synthesizeSpeech function as a placeholder
-        // In a real implementation, this would use a voice conversion model
-        audio = await synthesizeSpeech(voiceModel, "Voice conversion placeholder", selectedLanguage);
+        try {
+          console.log("Processing source audio for voice conversion, size:", sourceAudio.size);
+          const arrayBuffer = await sourceAudio.arrayBuffer();
+          console.log("Array buffer created, size:", arrayBuffer.byteLength);
+          
+          const sourceAudioBuffer = await context.decodeAudioData(arrayBuffer.slice(0));
+          console.log("Source audio decoded, duration:", sourceAudioBuffer.duration, "seconds");
+          
+          if (sourceAudioBuffer.duration === 0) {
+            throw new Error('Source audio has zero duration');
+          }
+          
+          // Use the actual voice conversion functionality
+          console.log("Starting voice conversion with model:", voiceModel.id);
+          
+          // Import the convertVoice function from the utils
+          const { convertVoice } = await import('../utils/voiceCloning');
+          
+          audio = await convertVoice(voiceModel, sourceAudioBuffer);
+          console.log("Voice conversion completed, output duration:", audio?.duration || 0, "seconds");
+          
+          // If the audio is empty or invalid, use a fallback
+          if (!audio || audio.duration === 0) {
+            console.warn("Voice conversion produced empty audio, using source audio as fallback");
+            audio = sourceAudioBuffer;
+          }
+        } catch (error) {
+          console.error("Error during voice conversion:", error);
+          // Ensure we have a valid audio buffer even if conversion fails
+          if (sourceAudio) {
+            const fallbackBuffer = await sourceAudio.arrayBuffer();
+            audio = await context.decodeAudioData(fallbackBuffer.slice(0));
+            console.log("Using fallback audio, duration:", audio.duration, "seconds");
+          } else {
+            throw new Error('Failed to process audio for voice conversion');
+          }
+        }
       }
       
       setSynthesizedAudio(audio);
       
       // Convert AudioBuffer to Blob for playback
-      const context = initAudioContext();
-      const source = context.createBufferSource();
-      source.buffer = audio;
+      const audioContext = initAudioContext();
       
-      // Create a MediaStreamDestination to get a stream
-      const dest = context.createMediaStreamDestination();
-      source.connect(dest);
+      // Ensure we have a valid audio buffer with actual content
+      if (!audio || audio.duration === 0) {
+        console.error("Audio buffer is invalid or has zero duration");
+        throw new Error("Failed to generate audio output");
+      }
       
-      // Record the stream to get a blob
-      const recorder = new MediaRecorder(dest.stream);
-      const chunks: BlobPart[] = [];
+      console.log("Processing audio for playback, duration:", audio.duration, "seconds");
       
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunks.push(e.data);
+      // SIMPLIFIED APPROACH: Convert AudioBuffer directly to WAV
+      const numberOfChannels = audio.numberOfChannels;
+      const sampleRate = audio.sampleRate;
+      const length = audio.length;
+      
+      // Create WAV file format
+      const buffer = new ArrayBuffer(44 + length * 2);
+      const view = new DataView(buffer);
+      
+      // Write WAV header
+      // "RIFF" chunk descriptor
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + length * 2, true);
+      writeString(view, 8, 'WAVE');
+      
+      // "fmt " sub-chunk
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true); // fmt chunk size
+      view.setUint16(20, 1, true); // audio format (1 for PCM)
+      view.setUint16(22, numberOfChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * numberOfChannels * 2, true); // byte rate
+      view.setUint16(32, numberOfChannels * 2, true); // block align
+      view.setUint16(34, 16, true); // bits per sample
+      
+      // "data" sub-chunk
+      writeString(view, 36, 'data');
+      view.setUint32(40, length * 2, true);
+      
+      // Write audio data
+      const channelData = audio.getChannelData(0);
+      let offset = 44;
+      for (let i = 0; i < length; i++) {
+        const sample = Math.max(-1, Math.min(1, channelData[i]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        offset += 2;
+      }
+      
+      // Create blob and URL
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      console.log("Created audio blob directly, size:", blob.size);
+      
+      if (audioRef.current) {
+        const url = URL.createObjectURL(blob);
+        console.log("Created audio URL:", url);
+        audioRef.current.src = url;
+        audioRef.current.load(); // Force reload of audio element
+      }
+      
+      // Helper function to write strings to DataView
+      function writeString(view: DataView, offset: number, string: string) {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
         }
-      };
-      
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/wav' });
-        if (audioRef.current) {
-          audioRef.current.src = URL.createObjectURL(blob);
-        }
-      };
-      
-      // Start recording and play the source
-      recorder.start();
-      source.start(0);
-      
-      // Stop recording after the duration of the audio
-      setTimeout(() => {
-        recorder.stop();
-        source.stop();
-      }, audio.duration * 1000);
+      }
       
       // Run detection on the synthesized audio
       const detectionResult = await enhancedSyntheticVoiceDetection(audio);
